@@ -154,7 +154,9 @@ DisplayError HWInfo::GetHWResourceInfo(HWResourceInfo *hw_resource) {
   while (Sys::getline_(fs, line)) {
     // parse the line and update information accordingly
     if (!ParseString(line.c_str(), tokens, max_count, ":, =\n", &token_count)) {
-      if (!strncmp(tokens[0], "hw_rev", strlen("hw_rev"))) {
+      if (!strncmp(tokens[0], "mdp_version", strlen("mdp_version"))) {
+        hw_resource_->hw_version = UINT32(atoi(tokens[1]));  // HW Version 3/5
+      } else if (!strncmp(tokens[0], "hw_rev", strlen("hw_rev"))) {
         hw_resource_->hw_revision = UINT32(atoi(tokens[1]));  // HW Rev, v1/v2
       } else if (!strncmp(tokens[0], "rot_input_fmts", strlen("rot_input_fmts"))) {
         ParseFormats(&tokens[1], (token_count - 1), kHWRotatorInput, hw_resource_);
@@ -317,7 +319,8 @@ DisplayError HWInfo::GetHWResourceInfo(HWResourceInfo *hw_resource) {
         hw_resource_->macrotile_nv12_factor, hw_resource_->macrotile_factor,
         hw_resource_->linear_factor, hw_resource_->scale_factor, hw_resource_->extra_fudge_factor);
 
-  if (hw_resource_->separate_rotator || hw_resource_->num_dma_pipe) {
+  // Avoid rotator for MDP3 harware.
+  if ((hw_resource_->separate_rotator || hw_resource_->num_dma_pipe) && !hw_resource_->has_ppp) {
     GetHWRotatorInfo(hw_resource_);
   }
 

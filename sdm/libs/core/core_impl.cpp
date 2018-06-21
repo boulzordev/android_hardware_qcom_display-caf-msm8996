@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2014 - 2016, The Linux Foundation. All rights reserved.
+* Copyright (c) 2014 - 2018, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without modification, are permitted
 * provided that the following conditions are met:
@@ -73,6 +73,9 @@ DisplayError CoreImpl::Init() {
     goto CleanupOnError;
   }
 
+  if (hw_info_intf_ == NULL) {
+    return kErrorResources;
+  }
   error = hw_info_intf_->GetHWResourceInfo(&hw_resource_);
   if (error != kErrorNone) {
     goto CleanupOnError;
@@ -178,5 +181,8 @@ DisplayError CoreImpl::GetFirstDisplayInterfaceType(HWDisplayInterfaceInfo *hw_d
   return hw_info_intf_->GetFirstDisplayInterfaceType(hw_disp_info);
 }
 
+bool CoreImpl::IsColorTransformSupported() {
+    return (hw_resource_.has_ppp) ? false : true;
+}
 }  // namespace sdm
 

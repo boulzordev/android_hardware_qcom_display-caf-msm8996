@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2014 - 2017, The Linux Foundation. All rights reserved.
+* Copyright (c) 2014 - 2018, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -153,8 +153,10 @@ void HWCDisplayPrimary::ProcessBootAnimCompleted() {
     boot_animation_completed_ = true;
     // Applying default mode after bootanimation is finished And
     // If Data is Encrypted, it is ready for access.
-    if (display_intf_)
+    if (display_intf_) {
       display_intf_->ApplyDefaultDisplayMode();
+      RestoreColorTransform();
+    }
   }
 }
 
@@ -171,13 +173,15 @@ HWC2::Error HWCDisplayPrimary::Validate(uint32_t *out_num_types, uint32_t *out_n
     return status;
   }
 
+
+  // Fill in the remaining blanks in the layers and add them to the SDM layerstack
+  BuildLayerStack();
+
   if (color_tranform_failed_) {
     // Must fall back to client composition
     MarkLayersForClientComposition();
   }
 
-  // Fill in the remaining blanks in the layers and add them to the SDM layerstack
-  BuildLayerStack();
   // Checks and replaces layer stack for solid fill
   SolidFillPrepare();
 
@@ -197,7 +201,7 @@ HWC2::Error HWCDisplayPrimary::Validate(uint32_t *out_num_types, uint32_t *out_n
   }
 
   uint32_t refresh_rate = GetOptimalRefreshRate(one_updating_layer);
-  if (current_refresh_rate_ != refresh_rate) {
+  if (current_refresh_rate_ != refresh_rate || handle_idle_timeout_) {
     error = display_intf_->SetRefreshRate(refresh_rate);
   }
 
@@ -211,7 +215,10 @@ HWC2::Error HWCDisplayPrimary::Validate(uint32_t *out_num_types, uint32_t *out_n
   }
 
   if (layer_set_.empty()) {
-    flush_ = true;
+    // Avoid flush for Command mode panel.
+    DisplayConfigFixedInfo display_config;
+    display_intf_->GetConfig(&display_config);
+    flush_ = !display_config.is_cmdmode;
     return status;
   }
 
@@ -226,7 +233,6 @@ HWC2::Error HWCDisplayPrimary::Present(int32_t *out_retire_fence) {
     // If we do not handle the frame set retireFenceFd to outbufAcquireFenceFd
     // Revisit this when validating display_paused
     DisplayError error = display_intf_->Flush();
-    validated_.reset();
     if (error != kErrorNone) {
       DLOGE("Flush failed. Error = %d", error);
     }
@@ -267,6 +273,18 @@ HWC2::Error HWCDisplayPrimary::SetColorMode(android_color_mode_t mode) {
   return status;
 }
 
+HWC2::Error HWCDisplayPrimary::RestoreColorTransform() {
+  auto status = color_mode_->RestoreColorTransform();
+  if (status != HWC2::Error::None) {
+    DLOGE("failed to RestoreColorTransform");
+    return status;
+  }
+
+  callbacks_->Refresh(HWC_DISPLAY_PRIMARY);
+
+  return status;
+}
+
 HWC2::Error HWCDisplayPrimary::SetColorTransform(const float *matrix,
                                                  android_color_transform_t hint) {
   if (!matrix) {
@@ -274,7 +292,7 @@ HWC2::Error HWCDisplayPrimary::SetColorTransform(const float *matrix,
   }
 
   auto status = color_mode_->SetColorTransform(matrix, hint);
-  if (status != HWC2::Error::None) {
+  if ((hint != HAL_COLOR_TRANSFORM_IDENTITY) && (status != HWC2::Error::None)) {
     DLOGE("failed for hint = %d", hint);
     color_tranform_failed_ = true;
     return status;
@@ -372,9 +390,12 @@ void HWCDisplayPrimary::SetSecureDisplay(bool secure_display_active) {
     DLOGI("SecureDisplay state changed from %d to %d Needs Flush!!", secure_display_active_,
           secure_display_active);
     secure_display_active_ = secure_display_active;
-    skip_prepare_ = true;
+
+    // Avoid flush for Command mode panel.
+    DisplayConfigFixedInfo display_config;
+    display_intf_->GetConfig(&display_config);
+    skip_prepare_ = !display_config.is_cmdmode;
   }
-  return;
 }
 
 void HWCDisplayPrimary::ForceRefreshRate(uint32_t refresh_rate) {

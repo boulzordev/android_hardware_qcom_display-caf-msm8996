@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2017, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2014-2018, The Linux Foundation. All rights reserved.
  * Not a Contribution.
  *
  * Copyright 2015 The Android Open Source Project
@@ -62,6 +62,7 @@ class HWCColorMode {
   HWC2::Error GetColorModes(uint32_t *out_num_modes, android_color_mode_t *out_modes);
   HWC2::Error SetColorMode(android_color_mode_t mode);
   HWC2::Error SetColorTransform(const float *matrix, android_color_transform_t hint);
+  HWC2::Error RestoreColorTransform();
 
  private:
   static const uint32_t kColorTransformMatrixCount = 16;
@@ -172,6 +173,9 @@ class HWCDisplay : public DisplayEventHandler {
   virtual HWC2::Error SetColorMode(android_color_mode_t mode) {
     return HWC2::Error::Unsupported;
   }
+  virtual HWC2::Error RestoreColorTransform() {
+    return HWC2::Error::Unsupported;
+  }
   virtual HWC2::Error SetColorTransform(const float *matrix, android_color_transform_t hint) {
     return HWC2::Error::Unsupported;
   }
@@ -206,6 +210,11 @@ class HWCDisplay : public DisplayEventHandler {
                                          float* out_max_luminance,
                                          float* out_max_average_luminance,
                                          float* out_min_luminance);
+  virtual HWC2::Error SetDisplayAnimating(bool animating) {
+    animating_ = animating;
+    validated_ = false;
+    return HWC2::Error::None;
+  }
 
  protected:
   // Maximum number of layers supported by display manager.
@@ -237,7 +246,6 @@ class HWCDisplay : public DisplayEventHandler {
   bool IsLayerUpdating(const Layer *layer);
   uint32_t SanitizeRefreshRate(uint32_t req_refresh_rate);
   virtual void CloseAcquireFds();
-  virtual void ClearRequestFlags();
   virtual void GetUnderScanConfig() { }
 
   enum {
@@ -246,6 +254,7 @@ class HWCDisplay : public DisplayEventHandler {
   };
 
   static std::bitset<kDisplayMax> validated_;
+  bool layer_stack_invalid_ = true;
   CoreInterface *core_intf_ = nullptr;
   HWCCallbacks *callbacks_  = nullptr;
   HWCBufferAllocator *buffer_allocator_ = NULL;
@@ -296,6 +305,7 @@ class HWCDisplay : public DisplayEventHandler {
   DisplayClass display_class_;
   uint32_t geometry_changes_ = GeometryChanges::kNone;
   bool skip_validate_ = false;
+  bool animating_ = false;
 };
 
 inline int HWCDisplay::Perform(uint32_t operation, ...) {
